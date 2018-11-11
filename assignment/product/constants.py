@@ -1,0 +1,2 @@
+APPROVED = 'approved'
+PENDING = 'pending'
