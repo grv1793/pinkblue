@@ -19,7 +19,6 @@ def current_request():
 class RequestMiddleware(MiddlewareMixin):
 
     def process_request(self, request):
-        print(dir(request))
         _requests[current_thread().ident] = request
 
     def process_response(self, request, response):

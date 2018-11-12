@@ -1,4 +1,4 @@
-APPROVE_INVENTORY = 'product.inventory'
+APPROVE_INVENTORY = 'product.approve_inventory'
 
 
 def can_approve_inventory(instance, user):

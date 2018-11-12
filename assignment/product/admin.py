@@ -78,30 +78,25 @@ class InventoryAdmin(FSMTransitionMixin, admin.ModelAdmin):
             if form.is_valid() and form.cleaned_data:
                 new_sku = form.cleaned_data.get('sku')
                 new_quantity = form.cleaned_data.get('quantity')
-                status = form.cleaned_data.get('status')
                 old_obj = None
 
                 if change:
-                    print('here')
                     old_obj = Inventory.objects.get(pk=obj.id)
                     obj.modified_by = request.user
                     obj.modified_at = timezone.now()
                 else:
-                    print('where')
                     batch = Batch.objects.create(
                         number_of_entries=new_quantity
                     )
                     obj.batch = batch
                     obj.created_by = request.user
-                if old_obj:
+                if old_obj and old_obj.status == APPROVED:
                     old_sku = old_obj.sku
                     old_quantity = old_obj.quantity
                     SKU.objects.filter(pk=old_sku.id).update(
-                        total_quantity=F('quantity') - old_quantity)
-                if status == APPROVED:
+                        total_quantity=F('total_quantity') - old_quantity)
                     SKU.objects.filter(pk=new_sku.id).update(
-                        total_quantity=F('quantity') + new_quantity
+                        total_quantity=F('total_quantity') + new_quantity
                     )
-
             super(InventoryAdmin, self).save_model(
                 request, obj, form, change)
