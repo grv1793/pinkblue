@@ -8,11 +8,13 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework import generics, status
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
 
-from product.serializers import InventorySerializer
+from product.transitions import can_approve_inventory
 from product.models import SKU, Inventory, Batch
+from vendor.models import Vendor
 from product.constants import APPROVED, PENDING
+from assignment.permissions import IsStaff
+from rest_framework.exceptions import ValidationError
 
 IST_OFFSET_HOURS = 5.5
 DATE_FORMAT = "%d-%m-%Y"
@@ -20,9 +22,7 @@ DATE_FORMAT = "%d-%m-%Y"
 
 
 class InventoryView(generics.ListCreateAPIView):
-    # TODO
-    permission_classes = (AllowAny, )
-    serializer_class = InventorySerializer
+    permission_classes = (IsStaff, )
 
     def get(self, request):
         response_data = ''
@@ -62,7 +62,6 @@ class InventoryView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         query = self.get_query(self.request.query_params)
-        print(query)
         return Inventory.objects.filter(query).select_related('sku', 'vendor')
 
     def get_query(self, params):
@@ -121,6 +120,9 @@ class InventoryView(generics.ListCreateAPIView):
             created_at = timezone.now()
             _status = record_data.get('status', PENDING)
 
+            if can_approve_inventory(None, request.user):
+                _status = APPROVED
+
             records_list.append(
                 Inventory(**{
                     'sku_id': sku_id,
@@ -151,9 +153,7 @@ class InventoryView(generics.ListCreateAPIView):
 
 
 class ApproveInventory(generics.UpdateAPIView):
-    # TODO
-    # permission_classes = (IsStaff, )
-    serializer_class = InventorySerializer
+    permission_classes = (IsStaff, )
 
     def put(self, request, pk):
         data = request.data
@@ -165,25 +165,43 @@ class ApproveInventory(generics.UpdateAPIView):
             return Response(status=status.HTTP_400_BAD_REQUEST,
                             data='Updation Failed')
 
-        new_sku_id = data.get('sku_id')
-        new_quantity = data.get('quantity')
+        new_sku_id = data.get('sku_id', inventory.sku_id)
+        new_quantity = data.get('quantity', inventory.quantity)
+        new_vendor_id = data.get('vendor_id', inventory.vendor_id)
         action = data.get('action', PENDING)
 
+        try:
+            vendor = Vendor.objects.filter(
+                pk=new_vendor_id).prefetch_related('skus').first()
+            new_sku = SKU.objects.get(pk=new_sku_id)
+            if new_sku not in vendor.skus.all():
+                raise ValidationError({
+                    'The changed SKU does not belong to the Vendor'
+                })
+        except:
+            raise ValidationError({
+                'Invalid data.'
+            })
+        sku_changes_req = (action == APPROVED or inventory.status == APPROVED)
+        if sku_changes_req and not can_approve_inventory(None, request.user):
+            return Response(status=status.HTTP_401_UNAUTHORIZED,
+                            data='Not Authorised')
+
+        old_sku_id = inventory.sku_id
+        old_quantity = inventory.quantity
         inventory.modified_by = request.user
         inventory.modified_at = timezone.now()
+        inventory.sku_id = new_sku_id
+        inventory.quantity = new_quantity
+        inventory.vendor_id = new_vendor_id
 
         with transaction.atomic():
-            if inventory.status == APPROVED:
-                old_sku_id = inventory.sku
-                old_quantity = inventory.quantity
+            if sku_changes_req:
                 SKU.objects.filter(pk=old_sku_id).update(
                     total_quantity=F('total_quantity') - old_quantity)
                 SKU.objects.filter(pk=new_sku_id).update(
                     total_quantity=F('total_quantity') + new_quantity
                 )
-            if action == APPROVED:
-                SKU.objects.filter(pk=inventory.sku_id).update(
-                    total_quantity=F('total_quantity') + inventory.quantity
-                )
+            inventory.save()
 
         return Response(status=status_code, data=response_data)

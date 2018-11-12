@@ -10,6 +10,7 @@ from fsm_admin.mixins import FSMTransitionMixin
 from django.db import transaction
 from django.db.models import F
 from product.constants import APPROVED
+from product.transitions import can_approve_inventory
 
 
 @admin.register(SKU)
@@ -85,6 +86,8 @@ class InventoryAdmin(FSMTransitionMixin, admin.ModelAdmin):
                     obj.modified_by = request.user
                     obj.modified_at = timezone.now()
                 else:
+                    if can_approve_inventory(obj, request.user):
+                        obj.status = APPROVED
                     batch = Batch.objects.create(
                         number_of_entries=new_quantity
                     )
