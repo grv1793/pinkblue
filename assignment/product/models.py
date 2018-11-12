@@ -68,7 +68,8 @@ class SKU(models.Model):
 class Inventory(models.Model):
 
     sku = models.ForeignKey('SKU', on_delete=models.PROTECT)
-    total_price = models.IntegerField(_("MRP"), null=True, blank=True)
+    total_price = models.DecimalField(_("MRP"), max_digits=20,
+                                      decimal_places=2, null=True, blank=True)
     created_at = models.DateTimeField(_("Creation Date"), auto_now_add=True)
     created_by = models.ForeignKey(User, related_name='inventory_created_by')
     modified_at = models.DateTimeField(_("Modified Date"),
@@ -96,3 +97,6 @@ class Inventory(models.Model):
     class Meta:
         verbose_name = _('Inventory')
         verbose_name_plural = _('Inventories')
+
+
+# class InventoryHistory():
